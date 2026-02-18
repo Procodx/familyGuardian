@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">FamilyGuardian</string>
+    <string name="guardian_mode_title">Guardian Mode</string>
+    <string name="panic_trigger_title">Panic Alert</string>
+    <string name="status_settings_title">Status &amp; Settings</string>
+</resources>
