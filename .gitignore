@@ -1,0 +1,53 @@
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+
+# IDEs/Editors
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+
+# Node.js - Dashboard
+dashboard/node_modules/
+dashboard/dist/
+dashboard/build/
+dashboard/npm-debug.log*
+dashboard/yarn-debug.log*
+dashboard/yarn-error.log*
+dashboard/.env
+dashboard/.env.development
+dashboard/.env.production
+dashboard/.env.local
+
+# Android - Mobile App
+mobile-app/.gradle/
+mobile-app/build/
+mobile-app/*/build/
+mobile-app/local.properties
+mobile-app/*.iml
+mobile-app/.idea/
+mobile-app/*.jks
+mobile-app/*.p12
+mobile-app/*.keystore
+mobile-app/app/google-services.json
+mobile-app/.externalNativeBuild
+mobile-app/.cxx
+mobile-app/captures/
+mobile-app/output.json
+
+# Build and temp
+dist/
+build/
+out/
+bin/
+temp/
+tmp/
+
+# Logs
+*.log
+logs/
