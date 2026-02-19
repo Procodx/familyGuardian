@@ -6,10 +6,12 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { FirebaseService } from '../firebase/firebase.service';
 import { RegisterDeviceDto, DeviceResponseDto } from './devices.dto';
+import * as admin from 'firebase-admin';
 
 @Injectable()
 export class DevicesService {
   private readonly collectionName = 'devices';
+  private readonly panicCollection = 'panicEvents';
 
   constructor(private firebaseService: FirebaseService) {}
 
@@ -33,9 +35,9 @@ export class DevicesService {
     const newDevice = {
       ...dto,
       deviceToken,
-      createdAt: new Date(),
-      lastSeen: new Date(),
-      status: 'offline',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'normal',
       lastLocation: null,
     };
 
@@ -44,7 +46,7 @@ export class DevicesService {
       deviceId: newDevice.deviceId,
       deviceName: newDevice.deviceName,
       deviceToken: newDevice.deviceToken,
-      registeredAt: newDevice.createdAt,
+      registeredAt: new Date(), // This will be approximate since we use serverTimestamp
     };
   }
 
@@ -70,11 +72,14 @@ export class DevicesService {
     return this.findByToken(token);
   }
 
-  async updateStatus(deviceId: string, status: 'online' | 'offline') {
+  async updateStatus(
+    deviceId: string,
+    status: 'normal' | 'critical' | 'online' | 'offline',
+  ) {
     if (!this.db) return;
     await this.db.collection(this.collectionName).doc(deviceId).update({
       status,
-      lastSeen: new Date(),
+      lastSeen: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
 
@@ -86,11 +91,75 @@ export class DevicesService {
       accuracy: number;
       timestamp: number;
     },
+    batteryLevel?: number,
   ) {
     if (!this.db) return;
-    await this.db.collection(this.collectionName).doc(deviceId).update({
-      lastLocation: location,
-      lastSeen: new Date(),
+    await this.db
+      .collection(this.collectionName)
+      .doc(deviceId)
+      .update({
+        lastLocation: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        },
+        batteryLevel: batteryLevel ?? null,
+        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+      });
+  }
+
+  async triggerPanic(deviceId: string, locationData: any): Promise<string> {
+    if (!this.db) throw new Error('Firestore not initialized');
+
+    // 1. Update Device Status to Critical
+    await this.updateStatus(deviceId, 'critical');
+
+    // 2. Persist Alert to panicEvents
+    const panicDoc = await this.db.collection(this.panicCollection).add({
+      deviceId,
+      latitude: locationData.latitude,
+      longitude: locationData.longitude,
+      batteryLevel: locationData.batteryLevel,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      acknowledged: false,
+      status: 'active',
     });
+
+    return panicDoc.id;
+  }
+
+  async logSmsResults(panicId: string, logs: any[]): Promise<void> {
+    if (!this.db) return;
+    await this.db.collection(this.panicCollection).doc(panicId).update({
+      smsLog: logs,
+    });
+  }
+
+  async acknowledgePanic(panicId: string): Promise<string | null> {
+    if (!this.db) return null;
+
+    const panicRef = this.db.collection(this.panicCollection).doc(panicId);
+    const panicDoc = await panicRef.get();
+
+    if (!panicDoc.exists) {
+      throw new NotFoundException('Panic event not found');
+    }
+
+    const panicData = panicDoc.data();
+    if (!panicData) {
+      throw new NotFoundException('Panic data corrupted');
+    }
+    const deviceId = panicData.deviceId;
+
+    // 1. Update Panic Document
+    await panicRef.update({
+      acknowledged: true,
+      status: 'resolved',
+      resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 2. Reset Device Status to normal
+    await this.updateStatus(deviceId, 'normal');
+
+    return deviceId;
   }
 }

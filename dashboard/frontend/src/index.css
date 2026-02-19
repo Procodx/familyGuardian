@@ -90,3 +90,67 @@
 .animate-panic {
   animation: pulse-red 1.5s infinite;
 }
+
+/* Leaflet Dark Theme Overrides */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  @apply !bg-monitor-panel !text-monitor-primary border !border-monitor-border rounded-none shadow-2xl;
+}
+
+.leaflet-popup-content {
+  @apply !m-0 p-3;
+}
+
+.leaflet-container {
+  @apply !font-monitor;
+}
+
+.leaflet-bar {
+  @apply !border-monitor-border;
+}
+
+.leaflet-bar a {
+  @apply !bg-monitor-panel !text-monitor-accent !border-monitor-border transition-colors;
+}
+
+.leaflet-bar a:hover {
+  @apply !bg-monitor-card;
+}
+
+/* Panic Marker Styling */
+.panic-marker-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.panic-marker-dot {
+  width: 12px;
+  height: 12px;
+  background-color: #ff3e3e;
+  border-radius: 50%;
+  border: 2px solid white;
+  z-index: 2;
+}
+
+.panic-marker-pulse {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  background-color: rgba(255, 62, 62, 0.6);
+  border-radius: 50%;
+  animation: marker-pulse 1.5s infinite ease-out;
+  z-index: 1;
+}
+
+@keyframes marker-pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}

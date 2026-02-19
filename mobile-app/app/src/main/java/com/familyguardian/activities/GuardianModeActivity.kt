@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
+import android.widget.Button
+import com.familyguardian.R
+
 class GuardianModeActivity : AppCompatActivity() {
     private lateinit var deviceManager: DeviceManager
     
@@ -23,9 +26,17 @@ class GuardianModeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // No layout yet as requested
+        setContentView(R.layout.activity_guardian_mode)
         
         deviceManager = DeviceManager(this)
+
+        findViewById<Button>(R.id.btnPanic)?.setOnClickListener {
+            Log.e(TAG, "PANIC BUTTON PRESSED!")
+            val intent = Intent(this, LocationService::class.java).apply {
+                action = LocationService.ACTION_SEND_PANIC
+            }
+            startService(intent)
+        }
 
         if (!deviceManager.isRegistered()) {
             registerDevice()

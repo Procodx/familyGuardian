@@ -8,6 +8,8 @@ import { AlertsModule } from './alerts/alerts.module';
 import { MapsModule } from './maps/maps.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { SmsModule } from './sms/sms.module';
+import { TrustedContactsModule } from './trusted-contacts/trusted-contacts.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { RealtimeModule } from './realtime/realtime.module';
     MapsModule,
     FirebaseModule,
     RealtimeModule,
+    SmsModule,
+    TrustedContactsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

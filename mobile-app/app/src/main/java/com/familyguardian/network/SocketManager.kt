@@ -56,5 +56,17 @@ class SocketManager(private val serverUrl: String, private val deviceToken: Stri
         socket?.emit("location_update", data)
     }
 
+    fun sendPanicAlert(deviceId: String, latitude: Double, longitude: Double, batteryLevel: Int) {
+        val data = JSONObject()
+        data.put("deviceId", deviceId)
+        data.put("latitude", latitude)
+        data.put("longitude", longitude)
+        data.put("batteryLevel", batteryLevel)
+        data.put("timestamp", System.currentTimeMillis())
+
+        Log.e(TAG, "EMITTING PANIC ALERT: $data")
+        socket?.emit("panic_alert", data)
+    }
+
     fun isConnected(): Boolean = socket?.connected() ?: false
 }

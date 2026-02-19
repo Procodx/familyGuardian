@@ -10,6 +10,9 @@ import {
 import { Server, Socket } from 'socket.io';
 import { RealtimeService } from './realtime.service';
 import { DevicesService } from '../devices/devices.service';
+import { SmsService } from '../sms/sms.service';
+import { TrustedContactsService } from '../trusted-contacts/trusted-contacts.service';
+import { ConfigService } from '@nestjs/config';
 
 @WebSocketGateway({
   cors: {
@@ -25,6 +28,9 @@ export class RealtimeGateway
   constructor(
     private readonly realtimeService: RealtimeService,
     private readonly devicesService: DevicesService,
+    private readonly smsService: SmsService,
+    private readonly trustedContactsService: TrustedContactsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -38,7 +44,14 @@ export class RealtimeGateway
       if (device) {
         client.data.device = device;
         client.data.type = 'device';
-        await this.devicesService.updateStatus(device.deviceId, 'online');
+        await this.devicesService.updateStatus(device.deviceId, 'normal');
+
+        // Notify dashboard of status change
+        this.server.emit('device_status_update', {
+          deviceId: device.deviceId,
+          status: 'normal',
+        });
+
         console.log(
           `Device connected: ${device.deviceName} (${device.deviceId})`,
         );
@@ -62,6 +75,13 @@ export class RealtimeGateway
     if (device) {
       // Mark as offline
       await this.devicesService.updateStatus(device.deviceId, 'offline');
+
+      // Notify dashboard of status change
+      this.server.emit('device_status_update', {
+        deviceId: device.deviceId,
+        status: 'offline',
+      });
+
       console.log(
         `Device disconnected: ${device.deviceName} (${device.deviceId})`,
       );
@@ -79,6 +99,7 @@ export class RealtimeGateway
       longitude: number;
       accuracy: number;
       timestamp: number;
+      batteryLevel?: number;
     },
   ) {
     const device = client.data.device;
@@ -96,20 +117,25 @@ export class RealtimeGateway
     console.log(`Location update from ${device.deviceName}:`, data);
 
     // Update Firestore
-    await this.devicesService.updateLocation(device.deviceId, data);
+    await this.devicesService.updateLocation(
+      device.deviceId,
+      data,
+      data.batteryLevel,
+    );
 
     // Broadcast to dashboard clients
     this.server.emit('device_location_update', {
       deviceId: device.deviceId,
       deviceName: device.deviceName,
       ...data,
+      lastSeen: new Date().toISOString(),
     });
 
     return { status: 'ok' };
   }
 
   @SubscribeMessage('panic_alert')
-  handlePanicAlert(
+  async handlePanicAlert(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
@@ -118,14 +144,60 @@ export class RealtimeGateway
 
     console.log(`PANIC ALERT from ${device.deviceName}:`, data);
 
+    // Persist to Firestore and get panicId
+    const panicId = await this.devicesService.triggerPanic(
+      device.deviceId,
+      data,
+    );
+
+    // --- SMS ESCALATION LAYER ---
+    try {
+      // Step A: Fetch Trusted Contacts
+      const contacts = await this.trustedContactsService.findByDeviceId(
+        device.deviceId,
+      );
+
+      // Step B: Construct Message
+      const lat = data.latitude || (data as any).lat || 0;
+      const lng = data.longitude || (data as any).lng || 0;
+      const message = `🚨 EMERGENCY ALERT 🚨\nDevice: ${device.deviceName}\nLocation: https://maps.google.com/?q=${lat},${lng}\nBattery: ${data.batteryLevel}%\nTime: ${new Date().toLocaleString()}`;
+
+      // Step C: Prepare Recipients
+      const recipients = contacts.map((c) => c.phoneNumber);
+      const adminFallback = this.configService.get<string>(
+        'ADMIN_FALLBACK_NUMBER',
+      );
+      if (adminFallback) recipients.push(adminFallback);
+
+      // Step D: Send SMS to everyone
+      const smsPromises = recipients.map((phone) =>
+        this.smsService.sendPanicAlert(phone, message),
+      );
+
+      const results = await Promise.all(smsPromises);
+
+      // Step E: Log Results to Firestore
+      const smsLog = results.map((res) => ({
+        phoneNumber: res.phoneNumber,
+        success: res.success,
+        timestamp: new Date().toISOString(),
+        error: res.error,
+      }));
+
+      await this.devicesService.logSmsResults(panicId, smsLog);
+    } catch (error) {
+      console.error('SMS Escalation failed:', error);
+    }
+
     // Broadcast to all connected clients
     this.server.emit('device_panic_triggered', {
+      panicId,
       deviceId: device.deviceId,
       deviceName: device.deviceName,
       timestamp: Date.now(),
       ...data,
     });
 
-    return { status: 'alert_broadcasted' };
+    return { status: 'alert_broadcasted_and_persisted', panicId };
   }
 }

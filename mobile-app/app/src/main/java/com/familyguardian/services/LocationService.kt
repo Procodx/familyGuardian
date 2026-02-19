@@ -21,6 +21,7 @@ class LocationService : Service() {
         private const val TAG = "LocationService"
         private const val UPDATE_INTERVAL = 5000L // 5 seconds
         const val SERVER_URL = "http://10.0.2.2:3000" // Emulator localhost address
+        const val ACTION_SEND_PANIC = "com.familyguardian.ACTION_SEND_PANIC"
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -39,11 +40,27 @@ class LocationService : Service() {
             return START_NOT_STICKY
         }
 
-        if (!isTracking) {
+        if (intent?.action == ACTION_SEND_PANIC) {
+            sendPanicAlert()
+        } else if (!isTracking) {
             startTracking(token)
         }
 
         return START_STICKY
+    }
+
+    private fun sendPanicAlert() {
+        Log.d(TAG, "Manual Panic Alert triggered via Intent")
+        // Use current mock values
+        val baseLat = 52.5200
+        val baseLng = 13.4050
+        
+        socketManager?.sendPanicAlert(
+            deviceId = deviceManager.getDeviceId(),
+            latitude = baseLat,
+            longitude = baseLng,
+            batteryLevel = currentBattery
+        )
     }
 
     private fun startTracking(token: String) {
