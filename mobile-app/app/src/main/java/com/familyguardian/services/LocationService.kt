@@ -15,6 +15,7 @@ class LocationService : Service() {
     private var socketManager: SocketManager? = null
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isTracking = false
+    private var currentBattery = 100 // Start at 100%
 
     companion object {
         private const val TAG = "LocationService"
@@ -64,12 +65,17 @@ class LocationService : Service() {
         val baseLng = 13.4050
         val latOffset = (Math.random() - 0.5) * 0.01
         val lngOffset = (Math.random() - 0.5) * 0.01
+
+        // Realistic battery drain: Decrement occasionally
+        if (Math.random() > 0.9 && currentBattery > 5) {
+            currentBattery -= 1
+        }
         
         socketManager?.sendLocation(
             latitude = baseLat + latOffset,
             longitude = baseLng + lngOffset,
             accuracy = 5.0 + (Math.random() * 10), // Accuracy between 5m and 15m
-            batteryLevel = (Math.random() * 100).toInt()
+            batteryLevel = currentBattery
         )
     }
 
