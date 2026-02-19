@@ -5,6 +5,7 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { RealtimeService } from './realtime.service';
@@ -27,45 +28,104 @@ export class RealtimeGateway
   ) {}
 
   async handleConnection(client: Socket) {
-    const token = client.handshake.query.deviceToken as string;
+    const deviceToken = client.handshake.query.deviceToken as string;
+    const adminToken =
+      client.handshake.auth?.token || client.handshake.query.token;
 
-    if (!token) {
-      console.log(
-        `Connection rejected: No deviceToken provided (Client: ${client.id})`,
-      );
-      client.disconnect();
+    // Case 1: Device connection
+    if (deviceToken) {
+      const device = await this.devicesService.validateDeviceToken(deviceToken);
+      if (device) {
+        client.data.device = device;
+        client.data.type = 'device';
+        await this.devicesService.updateStatus(device.deviceId, 'online');
+        console.log(
+          `Device connected: ${device.deviceName} (${device.deviceId})`,
+        );
+        return;
+      }
+    }
+
+    // Case 2: Dashboard/Admin connection (Simplified for now, should ideally verify JWT)
+    if (adminToken) {
+      client.data.type = 'admin';
+      console.log(`Admin dashboard connected: ${client.id}`);
       return;
     }
 
-    const isValid = await this.devicesService.validateDeviceToken(token);
-    if (!isValid) {
-      console.log(
-        `Connection rejected: Invalid deviceToken (Client: ${client.id})`,
-      );
-      client.disconnect();
-      return;
-    }
-
-    console.log(`Device connected: ${client.id} (Token: ${token})`);
+    console.log(`Connection rejected: Unauthorized (Client: ${client.id})`);
+    client.disconnect();
   }
 
-  handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
+  async handleDisconnect(client: Socket) {
+    const device = client.data.device;
+    if (device) {
+      // Mark as offline
+      await this.devicesService.updateStatus(device.deviceId, 'offline');
+      console.log(
+        `Device disconnected: ${device.deviceName} (${device.deviceId})`,
+      );
+    } else {
+      console.log(`Client disconnected: ${client.id}`);
+    }
   }
 
   @SubscribeMessage('location_update')
-  handleLocationUpdate(@MessageBody() data: any) {
-    console.log('Location update received:', data);
-    // Broadcast to all connected clients
-    this.server.emit('device_location_update', data);
-    return { event: 'location_update', data };
+  async handleLocationUpdate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      timestamp: number;
+    },
+  ) {
+    const device = client.data.device;
+    if (!device) return;
+
+    // Validate coordinates
+    if (
+      typeof data.latitude !== 'number' ||
+      typeof data.longitude !== 'number'
+    ) {
+      console.warn(`Invalid coordinates from ${device.deviceId}`);
+      return;
+    }
+
+    console.log(`Location update from ${device.deviceName}:`, data);
+
+    // Update Firestore
+    await this.devicesService.updateLocation(device.deviceId, data);
+
+    // Broadcast to dashboard clients
+    this.server.emit('device_location_update', {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
+      ...data,
+    });
+
+    return { status: 'ok' };
   }
 
   @SubscribeMessage('panic_alert')
-  handlePanicAlert(@MessageBody() data: any) {
-    console.log('Panic alert received:', data);
+  handlePanicAlert(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    const device = client.data.device;
+    if (!device) return;
+
+    console.log(`PANIC ALERT from ${device.deviceName}:`, data);
+
     // Broadcast to all connected clients
-    this.server.emit('device_panic_triggered', data);
-    return { event: 'panic_alert', data };
+    this.server.emit('device_panic_triggered', {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
+      timestamp: Date.now(),
+      ...data,
+    });
+
+    return { status: 'alert_broadcasted' };
   }
 }

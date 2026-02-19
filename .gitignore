@@ -23,6 +23,8 @@ dashboard/.env
 dashboard/.env.development
 dashboard/.env.production
 dashboard/.env.local
+dashboard/frontend/node_modules/
+
 
 # Android - Mobile App
 mobile-app/.gradle/

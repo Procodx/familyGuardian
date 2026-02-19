@@ -1,40 +1,96 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { FirebaseService } from '../firebase/firebase.service';
 import { RegisterDeviceDto, DeviceResponseDto } from './devices.dto';
-
-interface DeviceRecord {
-  deviceName: string;
-  deviceId: string;
-  deviceToken: string;
-  registeredAt: Date;
-}
 
 @Injectable()
 export class DevicesService {
-  private devices: Map<string, DeviceRecord> = new Map();
+  private readonly collectionName = 'devices';
+
+  constructor(private firebaseService: FirebaseService) {}
+
+  private get db() {
+    return this.firebaseService.getFirestore();
+  }
 
   async register(dto: RegisterDeviceDto): Promise<DeviceResponseDto> {
-    if (this.devices.has(dto.deviceId)) {
+    if (!this.db) {
+      throw new Error('Firestore not initialized');
+    }
+
+    const deviceRef = this.db.collection(this.collectionName).doc(dto.deviceId);
+    const doc = await deviceRef.get();
+
+    if (doc.exists) {
       throw new ConflictException('Device already registered');
     }
 
     const deviceToken = uuidv4();
-    const newDevice: DeviceRecord = {
+    const newDevice = {
       ...dto,
       deviceToken,
-      registeredAt: new Date(),
+      createdAt: new Date(),
+      lastSeen: new Date(),
+      status: 'offline',
+      lastLocation: null,
     };
 
-    this.devices.set(dto.deviceId, newDevice);
-    return newDevice;
+    await deviceRef.set(newDevice);
+    return {
+      deviceId: newDevice.deviceId,
+      deviceName: newDevice.deviceName,
+      deviceToken: newDevice.deviceToken,
+      registeredAt: newDevice.createdAt,
+    };
   }
 
-  async findAll(): Promise<DeviceResponseDto[]> {
-    return Array.from(this.devices.values());
+  async findAll(): Promise<any[]> {
+    if (!this.db) return [];
+    const snapshot = await this.db.collection(this.collectionName).get();
+    return snapshot.docs.map((doc) => doc.data());
   }
 
-  async validateDeviceToken(token: string): Promise<boolean> {
-    const allDevices = Array.from(this.devices.values());
-    return allDevices.some(d => d.deviceToken === token);
+  async findByToken(token: string): Promise<any | null> {
+    if (!this.db) return null;
+    const snapshot = await this.db
+      .collection(this.collectionName)
+      .where('deviceToken', '==', token)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    return snapshot.docs[0].data();
+  }
+
+  async validateDeviceToken(token: string): Promise<any | null> {
+    return this.findByToken(token);
+  }
+
+  async updateStatus(deviceId: string, status: 'online' | 'offline') {
+    if (!this.db) return;
+    await this.db.collection(this.collectionName).doc(deviceId).update({
+      status,
+      lastSeen: new Date(),
+    });
+  }
+
+  async updateLocation(
+    deviceId: string,
+    location: {
+      latitude: number;
+      longitude: number;
+      accuracy: number;
+      timestamp: number;
+    },
+  ) {
+    if (!this.db) return;
+    await this.db.collection(this.collectionName).doc(deviceId).update({
+      lastLocation: location,
+      lastSeen: new Date(),
+    });
   }
 }

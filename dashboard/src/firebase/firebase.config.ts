@@ -1,8 +1,8 @@
 export const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_AUTH_DOMAIN',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_STORAGE_BUCKET',
-  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+  apiKey: 'AIzaSyB1hFB9HabMrzzLQ5cdO4ATEitfclsfcqA',
+  authDomain: 'familyguidance-63284.firebaseapp.com',
+  projectId: 'familyguidance-63284',
+  storageBucket: 'familyguidance-63284.firebasestorage.app',
+  messagingSenderId: '98215227296',
+  appId: '1:98215227296:web:d20a67371a909292377ec5',
 };
